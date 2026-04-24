@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>The Salesperson · Jewelry AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Tool selector overlay (shown on first load) -->
+  <div class="tool-overlay" id="toolOverlay">
+    <div class="tool-modal">
+      <div class="modal-gem">💎</div>
+      <h1 class="modal-title">The Salesperson</h1>
+      <p class="modal-sub">Your personal fine jewelry assistant</p>
+      <p class="modal-prompt">Choose your search engine</p>
+      <div class="tool-options" id="toolOptions">
+        <button class="tool-option active" data-tool="serper">
+          <span class="tool-icon">🔍</span>
+          <span class="tool-name">SerpAPI</span>
+          <span class="tool-desc">Google Shopping</span>
+        </button>
+        <button class="tool-option" data-tool="exa">
+          <span class="tool-icon">✦</span>
+          <span class="tool-name">Exa</span>
+          <span class="tool-desc">Neural web search</span>
+        </button>
+        <button class="tool-option" data-tool="tavily">
+          <span class="tool-icon">◈</span>
+          <span class="tool-name">Tavily</span>
+          <span class="tool-desc">AI-powered search</span>
+        </button>
+        <button class="tool-option" data-tool="firecrawl">
+          <span class="tool-icon">🔥</span>
+          <span class="tool-name">Firecrawl</span>
+          <span class="tool-desc">Deep web crawl</span>
+        </button>
+      </div>
+      <p class="modal-prompt" style="margin-top:24px">Your region</p>
+      <div class="country-options" id="countryOptions">
+        <button class="country-option active" data-country="in">
+          <span>🇮🇳</span> India
+        </button>
+        <button class="country-option" data-country="us">
+          <span>🇺🇸</span> USA
+        </button>
+        <button class="country-option" data-country="jp">
+          <span>🇯🇵</span> Japan
+        </button>
+      </div>
+      <button class="btn-start" id="btnStart">Begin →</button>
+    </div>
+  </div>
+
+  <!-- Main app -->
+  <div class="app" id="app" style="display:none">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="brand-gem">💎</span>
+        <span class="brand-name">The Salesperson</span>
+      </div>
+      <div class="header-right">
+        <button class="active-tool-btn" id="activeToolBtn" title="Switch search engine">
+          <span id="activeToolIcon">🔍</span>
+          <span id="activeToolName">SerpAPI</span>
+          <span class="chevron">▾</span>
+        </button>
+        <span class="country-badge" id="countryBadge" title="Region">🇮🇳</span>
+        <button class="btn-new" id="btnClear" title="New conversation">↺</button>
+      </div>
+      <!-- Tool dropdown -->
+      <div class="tool-dropdown" id="toolDropdown" style="display:none">
+        <button class="dropdown-item" data-tool="serper">🔍 SerpAPI <small>Google Shopping</small></button>
+        <button class="dropdown-item" data-tool="exa">✦ Exa <small>Neural search</small></button>
+        <button class="dropdown-item" data-tool="tavily">◈ Tavily <small>AI search</small></button>
+        <button class="dropdown-item" data-tool="firecrawl">🔥 Firecrawl <small>Deep crawl</small></button>
+      </div>
+    </header>
+
+    <!-- Messages -->
+    <main class="messages" id="messages"></main>
+
+    <!-- Input -->
+    <footer class="input-wrap">
+      <div class="input-bar">
+        <textarea id="input" placeholder="Ask me about any jewelry…" rows="1"></textarea>
+        <button id="btnSend" class="send-btn" aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <p class="input-hint">Press Enter to send · Shift+Enter for new line</p>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
