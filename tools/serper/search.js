@@ -32,12 +32,12 @@ async function fetchOrganic(query, locale) {
   return { items, raw: res.data };
 }
 
-export async function searchSerper(query) {
+export async function searchSerper(query, cfg) {
   if (!process.env.SERP_API_KEY) {
     return { results: [], error: 'SERP_API_KEY not configured', raw: null };
   }
 
-  const locale = detectLocale(query);
+  const locale = cfg || detectLocale(query);
   console.log(`  [SerpAPI] query="${query}" locale=${locale.gl}`);
 
   // Try Google Shopping first
@@ -51,17 +51,25 @@ export async function searchSerper(query) {
 
   console.log(`  [SerpAPI] returned ${items.length} results`);
 
-  // Normalise both shopping and organic result shapes
+  // Normalise both shopping and organic result shapes with enhanced details
   const results = items.map(r => ({
-    title:    r.title || 'Untitled',
-    url:      r.link || '',
-    price:    r.price || null,
-    retailer: r.source || r.displayed_link || null,
-    description: r.snippet || r.description || '',
-    score:    r.rating ?? null,
-    reviews:  r.reviews ?? null,
-    imageUrl: r.thumbnail || null,
-    delivery: r.delivery || null
+    name:        r.title || r.product_title || 'Untitled',
+    price:       r.price || r.extracted_price || null,
+    original_price: r.original_price || null,
+    rating:      (r.rating || r.average_rating) ?? null,
+    reviews:     (r.review_count || r.reviews) ?? null,
+    retailer:    r.source || r.displayed_link || new URL(r.link || '').hostname || 'Unknown',
+    url:         r.link || r.product_link || '',
+    image_url:   r.thumbnail || r.image || r.product_image || null,
+    description: r.snippet || r.description || r.product_snippet || '',
+    delivery:    r.delivery || null,
+    availability: r.availability || null,
+    in_stock:    r.in_stock !== false,
+    // Enhanced fields for jewelry
+    metal:       r.attributes?.metal || null,
+    stone:       r.attributes?.stone || null,
+    carat:       r.attributes?.carat || r.attributes?.weight || null,
+    clarity:     r.attributes?.clarity || null
   }));
 
   return { results, raw };

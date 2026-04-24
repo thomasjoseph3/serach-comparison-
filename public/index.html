@@ -55,6 +55,21 @@
     </div>
   </div>
 
+  <!-- Comparison Modal -->
+  <div class="compare-modal hidden" id="compareModal">
+    <div class="compare-content">
+      <div class="compare-header">
+        <h2>Search History</h2>
+        <button class="compare-close" id="compareClose">✕</button>
+      </div>
+      <div class="compare-searches" id="compareSearches">
+        <div class="compare-empty">
+          <p>No searches yet. Start searching to compare!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Main app -->
   <div class="app" id="app" style="display:none">
 
@@ -70,6 +85,7 @@
           <span id="activeToolName">SerpAPI</span>
           <span class="chevron">▾</span>
         </button>
+        <button class="btn-compare" id="btnCompare" title="Compare searches" style="display:none">📊</button>
         <span class="country-badge" id="countryBadge" title="Region">🇮🇳</span>
         <button class="btn-new" id="btnClear" title="New conversation">↺</button>
       </div>

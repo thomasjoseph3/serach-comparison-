@@ -43,7 +43,7 @@ function buildSystemPrompt(country) {
 }
 
 async function callLLM(messages, useTools) {
-  const body = { model: process.env.MODEL || 'openai/gpt-4o-mini', messages };
+  const body = { model: process.env.MODEL || 'google/gemini-3-flash-preview', messages };
   if (useTools) { body.tools = [SEARCH_TOOL]; body.tool_choice = 'auto'; }
   const res = await axios.post(OPENROUTER_URL, body, { headers: orHeaders() });
   return res.data.choices[0].message;
@@ -52,15 +52,18 @@ async function callLLM(messages, useTools) {
 function formatForAI(results) {
   if (!results.length) return 'No results found for this search.';
   return results.slice(0, 15).map((r, i) => [
-    `[${i + 1}] ${r.title}`,
+    `[${i + 1}] ${r.name || r.title}`,
     `URL: ${r.url}`,
     r.price    ? `Price: ${r.price}`    : null,
-    r.retailer ? `Store: ${r.retailer}` : null,
-    r.score    ? `Rating: ${r.score}`   : null,
+    r.retailer ? `Retailer: ${r.retailer}` : null,
+    r.metal    ? `Metal: ${r.metal}`    : null,
+    r.stone    ? `Stone: ${r.stone}`    : null,
+    r.rating   ? `Rating: ${r.rating}/5`   : null,
     r.reviews  ? `Reviews: ${r.reviews}`: null,
-    r.imageUrl ? `Image: ${r.imageUrl}` : null,
     r.delivery ? `Delivery: ${r.delivery}`: null,
-    r.description ? `Info: ${r.description.slice(0, 300)}` : null
+    r.in_stock !== undefined ? `Stock: ${r.in_stock ? 'Available' : 'Out of stock'}` : null,
+    r.image_url ? `Image: ${r.image_url}` : null,
+    r.description ? `Details: ${r.description.slice(0, 300)}` : null
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 

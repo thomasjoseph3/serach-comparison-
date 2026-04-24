@@ -23,10 +23,14 @@ const messagesEl    = document.getElementById('messages');
 const inputEl       = document.getElementById('input');
 const btnSend       = document.getElementById('btnSend');
 const btnClear      = document.getElementById('btnClear');
+const btnCompare    = document.getElementById('btnCompare');
 const activeToolBtn = document.getElementById('activeToolBtn');
 const activeToolIcon= document.getElementById('activeToolIcon');
 const activeToolName= document.getElementById('activeToolName');
 const toolDropdown  = document.getElementById('toolDropdown');
+const compareModal  = document.getElementById('compareModal');
+const compareSearches = document.getElementById('compareSearches');
+const compareClose  = document.getElementById('compareClose');
 
 // ── Tool selector overlay ─────────────────────────────────
 document.querySelectorAll('.tool-option').forEach(btn => {
@@ -242,6 +246,7 @@ function renderCards(items) {
   for (const p of products) {
     const card = document.createElement('div');
     card.className = 'p-card';
+    card.style.cursor = 'pointer';
 
     // Image
     if (p.image_url) {
@@ -270,6 +275,16 @@ function renderCards(items) {
       ${p.url            ? `<a class="p-card-link" href="${esc(p.url)}" target="_blank" rel="noopener">View product ↗</a>` : ''}
     `;
     card.appendChild(body);
+
+    // Click interaction: open product link
+    if (p.url) {
+      card.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'A') {
+          window.open(p.url, '_blank', 'noopener,noreferrer');
+        }
+      });
+    }
+
     scroll.appendChild(card);
   }
 
@@ -318,6 +333,77 @@ btnClear.addEventListener('click', async () => {
   messagesEl.innerHTML = '';
   showWelcome();
 });
+
+// ── Comparison Modal ──────────────────────────────────────
+async function loadSearchHistory() {
+  try {
+    const res = await fetch(`/api/chat/history/${SESSION_ID}`);
+    const data = await res.json();
+    return data.searches || [];
+  } catch {
+    return [];
+  }
+}
+
+async function showCompareModal() {
+  const searches = await loadSearchHistory();
+  
+  if (!searches.length) {
+    compareSearches.innerHTML = '<div class="compare-empty"><p>No searches yet. Start searching to compare!</p></div>';
+  } else {
+    compareSearches.innerHTML = searches.map(s => {
+      const timestamp = new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const toolLabel = TOOL_META[s.tool].label;
+      const countryLabel = COUNTRY_META[s.country]?.label || s.country;
+      
+      return `
+        <div class="search-item">
+          <div class="search-item-header">
+            <div class="search-query">${esc(s.query)}</div>
+          </div>
+          <div class="search-meta">
+            <span>${TOOL_META[s.tool].icon} ${toolLabel}</span>
+            <span>🌍 ${countryLabel}</span>
+            <span>📊 ${s.resultCount} results</span>
+            <span>🕐 ${timestamp}</span>
+          </div>
+          ${s.results?.length ? `
+            <div class="search-results-preview">
+              ${s.results.slice(0, 3).map(r => `
+                <div class="result-preview">
+                  <div class="result-preview-title">${esc(r.title || 'Untitled')}</div>
+                  ${r.price ? `<div class="result-preview-price">${esc(r.price)}</div>` : ''}
+                  ${r.retailer ? `<small>${esc(r.retailer)}</small>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+  
+  compareModal.classList.remove('hidden');
+}
+
+btnCompare.addEventListener('click', showCompareModal);
+compareClose.addEventListener('click', () => compareModal.classList.add('hidden'));
+compareModal.addEventListener('click', (e) => {
+  if (e.target === compareModal) compareModal.classList.add('hidden');
+});
+
+// Show compare button after first search
+let searchCount = 0;
+const originalAppendAIMsg = window.appendAIMsg;
+window.appendAIMsg = function(text, searchQuery) {
+  if (searchQuery) {
+    searchCount++;
+    if (searchCount > 0) {
+      btnCompare.style.display = 'flex';
+    }
+  }
+  return originalAppendAIMsg(text, searchQuery);
+};
 
 // ── Helpers ───────────────────────────────────────────────
 function scrollBottom() {
