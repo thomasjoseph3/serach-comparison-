@@ -1,25 +1,16 @@
 {
   "version": 2,
-  "name": "jewelry-sales-agent",
   "public": false,
-  "buildCommand": "echo 'No build needed'",
-  "env": {
-    "OPEN_ROUTER_API_KEY": "@open_router_api_key",
-    "TAVILY_API_KEY": "@tavily_api_key",
-    "EXA_API_KEY": "@exa_api_key",
-    "FIRE_CRAWL_API_KEY": "@fire_crawl_api_key",
-    "SERP_API_KEY": "@serp_api_key",
-    "MONGO_URL": "@mongo_url",
-    "JWT_SECRET": "@jwt_secret",
-    "MODEL": "google/gemini-3-flash-preview"
-  },
-  "functions": {
-    "server.js": {
-      "memory": 512,
-      "maxDuration": 60,
-      "runtime": "nodejs22.x"
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node",
+      "config": {
+        "memory": 512,
+        "maxDuration": 60
+      }
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
