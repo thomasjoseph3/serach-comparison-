@@ -1,13 +1,14 @@
 /* ── Reset & Base ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { overflow-x: hidden; }
 
 :root {
   --bg:        #0a0a0a;
   --surface:   #111111;
   --surface2:  #191919;
   --border:    #242424;
-  --gold:      #c9a84c;
-  --gold-dim:  #8a6d2a;
+  --gold:      #e2b84f;
+  --gold-dim:  #a07828;
   --text:      #e8e6e1;
   --muted:     #6a6a6a;
   --error:     #c0392b;
@@ -78,9 +79,38 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .country-option.active { border-color: var(--gold); background: var(--surface2); }
 
 .country-badge {
-  font-size: 18px; cursor: default;
-  padding: 2px 4px; border-radius: 4px;
+  font-size: 18px; cursor: pointer;
+  padding: 4px 6px; border-radius: 6px;
+  background: none; border: 1px solid var(--border);
+  transition: border-color .15s;
+  line-height: 1;
 }
+.country-badge:hover { border-color: var(--gold-dim); }
+
+/* Country dropdown — mirrors tool-dropdown but anchored to its button */
+.country-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 18px; z-index: 50;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+  min-width: 160px;
+}
+
+/* User dropdown (mobile: clear + logout) */
+.user-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 18px; z-index: 50;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+  min-width: 180px;
+}
+.user-dropdown-name {
+  padding: 10px 16px 8px;
+  font-size: 12px; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.user-dropdown .dropdown-item.danger { color: #e57373; }
+.user-dropdown .dropdown-item.danger:hover { background: rgba(229,115,115,.08); }
 
 .btn-start {
   width: 100%;
@@ -100,6 +130,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   height: 100dvh; /* dynamic viewport height for mobile */
   max-width: 780px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 /* ── Header ───────────────────────────────────────────────── */
@@ -130,14 +161,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .active-tool-btn:hover { border-color: var(--gold-dim); }
 .chevron { color: var(--muted); font-size: 10px; }
 
-.btn-new {
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--muted); border-radius: 8px;
-  width: 34px; height: 34px; font-size: 16px;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
-}
-.btn-new:hover { color: var(--text); border-color: var(--gold-dim); }
+.btn-new { display: none; }
 
 .btn-compare {
   background: var(--surface); border: 1px solid var(--border);
@@ -528,7 +552,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   .brand-gem { font-size: 18px; }
   .header-right { gap: 6px; }
   .active-tool-btn { padding: 5px 10px; font-size: 12px; }
-  .btn-new { width: 32px; height: 32px; font-size: 14px; }
+  /* clear lives in the user dropdown on mobile */
+  .user-badge { cursor: pointer; }
   .messages { padding: 14px 10px; gap: 16px; }
   .input-wrap { padding: 8px 10px 12px; }
   .input-hint { display: none; }
@@ -595,14 +620,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; cursor: default; flex-shrink: 0;
 }
-.btn-logout {
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--muted); border-radius: 8px;
-  width: 34px; height: 34px; font-size: 15px;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
-}
-.btn-logout:hover { color: #e57373; border-color: #e57373; }
+.btn-logout { display: none; }
 
 /* ── Brand chips ─────────────────────────────────────────── */
 .brand-chips { margin-top: 10px; }

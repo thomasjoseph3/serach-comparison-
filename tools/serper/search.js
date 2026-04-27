@@ -175,14 +175,22 @@ function applyQualityFilters(items, query, gl, overrideFloor, priceCeiling) {
   return kept;
 }
 
+// ─── SerpAPI locale params by country code ───────────────────────────────────
+const SERP_LOCALE_PARAMS = {
+  in: { gl: 'in', hl: 'en', location: 'India' },
+  us: { gl: 'us', hl: 'en' },
+  gb: { gl: 'gb', hl: 'en', location: 'United Kingdom' },
+  jp: { gl: 'jp', hl: 'ja', location: 'Japan' },
+};
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 export async function searchSerper(query, cfg) {
   if (!process.env.SERP_API_KEY) {
     return { results: [], error: 'SERP_API_KEY not configured', raw: null };
   }
 
-  const locale = cfg || detectLocale(query);
-  const gl     = locale.gl || 'us';
+  const gl          = cfg?.gl || 'us';
+  const serpLocale  = SERP_LOCALE_PARAMS[gl] || detectLocale(query);
   console.log(`  [SerpAPI] query="${query}" locale=${gl}`);
 
   // Fetch 20 raw results so the quality filter has enough pool to still return 10 good ones
@@ -192,7 +200,7 @@ export async function searchSerper(query, cfg) {
       q: query,
       api_key: process.env.SERP_API_KEY,
       num: 20,
-      ...locale
+      ...serpLocale
     }
   });
 
@@ -228,8 +236,20 @@ export async function searchSerper(query, cfg) {
     // Basic hard drops: out-of-stock and no URL
     .filter(r => r.in_stock !== false && r.url);
 
+  // Sanity-cap price overrides: if the LLM passed an INR-scale number into a USD/GBP/JPY search
+  // (e.g. user switched region mid-conversation), the floor would be absurdly high and drop
+  // everything. Cap the override to 500× the natural floor for this locale/category.
+  const category    = detectCategory(query);
+  const naturalFloor = getPriceFloor(serpLocale.gl, category, null);
+  const rawMin = cfg?.minPrice || cfg?.priceFloor || null;
+  const rawMax = cfg?.maxPrice || null;
+  const safeMin = rawMin != null && rawMin > naturalFloor * 500 ? null : rawMin;
+  const safeMax = rawMax != null && rawMax > naturalFloor * 5000 ? null : rawMax;
+  if (safeMin !== rawMin) console.log(`  [SerpAPI] minPrice ${rawMin} sanity-capped to null (locale=${serpLocale.gl})`);
+  if (safeMax !== rawMax) console.log(`  [SerpAPI] maxPrice ${rawMax} sanity-capped to null (locale=${serpLocale.gl})`);
+
   // Quality layer: spam names, price floor, price ceiling, domain dedup, title dedup
-  const results = applyQualityFilters(mapped, query, gl, cfg?.minPrice || cfg?.priceFloor, cfg?.maxPrice)
+  const results = applyQualityFilters(mapped, query, serpLocale.gl, safeMin, safeMax)
     .slice(0, 10);
 
   console.log(`  [SerpAPI] ${results.length} final results`);

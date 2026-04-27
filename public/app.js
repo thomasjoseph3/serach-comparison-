@@ -35,10 +35,13 @@ const btnLogout     = document.getElementById('btnLogout');
 const btnCompare    = document.getElementById('btnCompare');
 const countryBadge  = document.getElementById('countryBadge');
 const userBadge     = document.getElementById('userBadge');
-const activeToolBtn = document.getElementById('activeToolBtn');
-const activeToolIcon= document.getElementById('activeToolIcon');
-const activeToolName= document.getElementById('activeToolName');
-const toolDropdown  = document.getElementById('toolDropdown');
+const activeToolBtn    = document.getElementById('activeToolBtn');
+const activeToolIcon   = document.getElementById('activeToolIcon');
+const activeToolName   = document.getElementById('activeToolName');
+const toolDropdown     = document.getElementById('toolDropdown');
+const countryDropdown  = document.getElementById('countryDropdown');
+const userDropdown     = document.getElementById('userDropdown');
+const userDropdownName = document.getElementById('userDropdownName');
 const compareModal  = document.getElementById('compareModal');
 const compareSearches = document.getElementById('compareSearches');
 const compareClose  = document.getElementById('compareClose');
@@ -98,13 +101,37 @@ function showLoginError(msg) {
   loginError.style.display = 'block';
 }
 
-// ── Logout ────────────────────────────────────────────────
-btnLogout.addEventListener('click', () => {
+// ── Logout / Clear (shared logic) ────────────────────────
+function doLogout() {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('auth_user');
   localStorage.removeItem('pref_tool');
   localStorage.removeItem('pref_country');
   location.reload();
+}
+async function doNewConversation() {
+  await fetch('/api/chat/session', { method: 'DELETE', headers: authHeaders() }).catch(() => {});
+  messagesEl.innerHTML = '';
+  btnCompare.style.display = 'none';
+  showWelcome();
+}
+
+btnLogout.addEventListener('click', doLogout);
+
+// ── User badge dropdown (mobile: new conversation + logout) ──
+userBadge.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = userDropdown.style.display !== 'none';
+  userDropdown.style.display = open ? 'none' : 'block';
+  toolDropdown.style.display = 'none';
+  countryDropdown.style.display = 'none';
+});
+document.getElementById('userDropdownClear').addEventListener('click', async () => {
+  userDropdown.style.display = 'none';
+  await doNewConversation();
+});
+document.getElementById('userDropdownLogout').addEventListener('click', () => {
+  doLogout();
 });
 
 // ── Tool overlay (shown after login) ─────────────────────
@@ -142,11 +169,11 @@ document.getElementById('btnStart').addEventListener('click', async () => {
 async function launchApp() {
   appEl.style.display = 'flex';
   updateToolBadge();
-  countryBadge.textContent = COUNTRY_META[activeCountry].flag;
-  countryBadge.title = COUNTRY_META[activeCountry].label;
+  updateCountryBadge();
   if (currentUser) {
     userBadge.title = currentUser.name;
     userBadge.textContent = currentUser.name.slice(0, 1).toUpperCase();
+    userDropdownName.textContent = currentUser.name;
   }
   await restoreSession();
   inputEl.focus();
@@ -193,23 +220,57 @@ activeToolBtn.addEventListener('click', e => {
   e.stopPropagation();
   const open = toolDropdown.style.display !== 'none';
   toolDropdown.style.display = open ? 'none' : 'block';
+  countryDropdown.style.display = 'none';
 });
-document.addEventListener('click', () => { toolDropdown.style.display = 'none'; });
 
-document.querySelectorAll('.dropdown-item').forEach(item => {
+// ── Header country switcher ───────────────────────────────
+countryBadge.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = countryDropdown.style.display !== 'none';
+  countryDropdown.style.display = open ? 'none' : 'block';
+  toolDropdown.style.display = 'none';
+  userDropdown.style.display = 'none';
+});
+document.addEventListener('click', () => {
+  toolDropdown.style.display = 'none';
+  countryDropdown.style.display = 'none';
+  userDropdown.style.display = 'none';
+});
+
+document.querySelectorAll('#toolDropdown .dropdown-item').forEach(item => {
   item.addEventListener('click', () => {
     activeTool = item.dataset.tool;
+    localStorage.setItem('pref_tool', activeTool);
     updateToolBadge();
     toolDropdown.style.display = 'none';
     appendSystemNote(`Switched to ${TOOL_META[activeTool].label}`);
   });
 });
 
+document.querySelectorAll('#countryDropdown .dropdown-item').forEach(item => {
+  item.addEventListener('click', () => {
+    activeCountry = item.dataset.country;
+    localStorage.setItem('pref_country', activeCountry);
+    updateCountryBadge();
+    countryDropdown.style.display = 'none';
+    appendSystemNote(`Region switched to ${COUNTRY_META[activeCountry].label} (${COUNTRY_META[activeCountry].currency})`);
+  });
+});
+
+function updateCountryBadge() {
+  const m = COUNTRY_META[activeCountry];
+  countryBadge.textContent = m.flag;
+  countryBadge.title = `${m.label} (${m.currency}) — click to switch region`;
+  document.querySelectorAll('#countryDropdown .dropdown-item').forEach(i => {
+    i.classList.toggle('current', i.dataset.country === activeCountry);
+  });
+}
+
 function updateToolBadge() {
   const m = TOOL_META[activeTool];
   activeToolIcon.textContent = m.icon;
   activeToolName.textContent = m.label;
-  document.querySelectorAll('.dropdown-item').forEach(i => {
+  document.querySelectorAll('#toolDropdown .dropdown-item').forEach(i => {
     i.classList.toggle('current', i.dataset.tool === activeTool);
   });
 }
@@ -672,15 +733,7 @@ function renderCards(items, searchQuery, usedTool) {
 }
 
 // ── Clear (new conversation) ──────────────────────────────
-btnClear.addEventListener('click', async () => {
-  await fetch('/api/chat/session', {
-    method: 'DELETE',
-    headers: authHeaders()
-  }).catch(() => {});
-  messagesEl.innerHTML = '';
-  btnCompare.style.display = 'none';
-  showWelcome();
-});
+btnClear.addEventListener('click', doNewConversation);
 
 // ── Search history modal ──────────────────────────────────
 btnCompare.addEventListener('click', showHistoryModal);

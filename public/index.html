@@ -94,15 +94,32 @@
           <span class="chevron">▾</span>
         </button>
         <button class="btn-compare" id="btnCompare" title="Search history" style="display:none">📊</button>
-        <span class="country-badge" id="countryBadge" title="Region">🇮🇳</span>
+        <button class="country-badge" id="countryBadge" title="Switch region">🇮🇳</button>
         <span class="user-badge" id="userBadge" title="Logged in user">👤</span>
         <button class="btn-new" id="btnClear" title="New conversation">↺</button>
-        <button class="btn-logout" id="btnLogout" title="Sign out">⎋</button>
+        <button class="btn-logout" id="btnLogout" title="Sign out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+            <line x1="12" y1="2" x2="12" y2="12"/>
+          </svg>
+        </button>
       </div>
       <!-- Tool dropdown -->
       <div class="tool-dropdown" id="toolDropdown" style="display:none">
         <button class="dropdown-item" data-tool="serpapi">🔍 SerpAPI <small>Google Shopping</small></button>
         <button class="dropdown-item" data-tool="exa">✦ Exa <small>Neural search</small></button>
+      </div>
+      <!-- Country dropdown -->
+      <div class="country-dropdown" id="countryDropdown" style="display:none">
+        <button class="dropdown-item" data-country="in">🇮🇳 India <small>INR</small></button>
+        <button class="dropdown-item" data-country="us">🇺🇸 USA <small>USD</small></button>
+        <button class="dropdown-item" data-country="jp">🇯🇵 Japan <small>JPY</small></button>
+      </div>
+      <!-- User dropdown (mobile: clear + logout) -->
+      <div class="user-dropdown" id="userDropdown" style="display:none">
+        <div class="user-dropdown-name" id="userDropdownName">Signed in</div>
+        <button class="dropdown-item" id="userDropdownClear">↺ New conversation</button>
+        <button class="dropdown-item danger" id="userDropdownLogout">⏻ Sign out</button>
       </div>
     </header>
 

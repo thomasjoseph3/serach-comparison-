@@ -96,7 +96,10 @@ router.get('/history', requireAuth, async (req, res) => {
 // Clear session (new conversation)
 router.delete('/session', requireAuth, async (req, res) => {
   await connectDB();
-  await ChatSession.deleteMany({ userId: req.user.userId });
+  await Promise.all([
+    ChatSession.deleteMany({ userId: req.user.userId }),
+    Search.deleteMany({ userId: req.user.userId }),
+  ]);
   res.json({ ok: true });
 });
 

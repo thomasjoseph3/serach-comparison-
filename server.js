@@ -22,7 +22,11 @@ app.use('/api/auth', authRouter);
 app.use('/api/chat', chatRouter);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 Server running at http://localhost:${PORT}`);
-  console.log(`   Keys: OpenRouter=${!!process.env.OPEN_ROUTER_API_KEY} | SerpAPI=${!!process.env.SERP_API_KEY} | MongoDB=${!!process.env.MONGO_URL} | JWT=${!!process.env.JWT_SECRET}\n`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Server running at http://localhost:${PORT}`);
+    console.log(`   Keys: OpenRouter=${!!process.env.OPEN_ROUTER_API_KEY} | SerpAPI=${!!process.env.SERP_API_KEY} | MongoDB=${!!process.env.MONGO_URL} | JWT=${!!process.env.JWT_SECRET}\n`);
+  });
+}
+
+export default app;

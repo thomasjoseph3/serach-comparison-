@@ -13,60 +13,84 @@ const COUNTRY_CONFIG = {
   jp: { locale: 'Japan', currency: 'JPY', symbol: '¥',  gl: 'jp' }
 };
 
-const QUERY_STYLE = {
-  exa: (
-    'Natural language sentence describing exactly what the user wants — Exa is a neural search engine. ' +
-    'Write it like a product description, e.g. "gold chain necklace for a young boy aged 5-10 years in India" ' +
-    'or "diamond solitaire engagement ring in white gold for women India". ' +
-    'Include material, style, occasion, recipient, and country. Do NOT use keyword lists.'
-  ),
-  serpapi: (
-    'Keyword-dense Google Shopping query. Structure: [Brand] + jewelry type + material + attributes + country. ' +
-    'Rules: ' +
-    '(1) Material specificity — "22kt yellow gold" not just "gold", "VVS diamond" not just "diamond". ' +
-    '(2) Brand first — if user names a brand, put it first: "Tanishq 22kt gold chain India". ' +
-    '(3) Occasion — include it: engagement, wedding, anniversary, gifting, daily wear, office wear. ' +
-    '(4) Recipient — include it: men, women, kids, boys, girls, baby, bride. ' +
-    '(5) Style — include if mentioned: solitaire, cluster, tennis, choker, bangle, stud, hoop. ' +
-    '(6) Budget — NEVER put price numbers in the query. Extract budget to maxPrice/minPrice fields. ' +
-    'GOOD: "Tanishq 22kt gold necklace women India" | "VVS diamond engagement ring platinum India" | "kids gold chain boys 22kt India". ' +
-    'BAD: "affordable gold ring" | "ring under 50000" | "nice jewelry for wife".'
-  ),
-  firecrawl: (
-    'Short keyword-style search query: jewelry type + key attributes only. ' +
-    'e.g. "gold chain necklace kids boys India" or "diamond ring women white gold India". ' +
-    'No sentences, no filler words.'
-  )
-};
+function buildQueryStyle(activeTool, localeLabel) {
+  const c = localeLabel || 'India';
+  return {
+    exa: (
+      `Natural language sentence describing exactly what the user wants — Exa is a neural search engine. ` +
+      `Write it like a product description, e.g. "gold chain necklace for a young boy aged 5-10 years in ${c}" ` +
+      `or "diamond solitaire engagement ring in white gold for women ${c}". ` +
+      `Include material, style, occasion, recipient, and country. Do NOT use keyword lists.`
+    ),
+    serpapi: (
+      `Keyword-dense Google Shopping query. Structure: [Brand] + jewelry type + material + attributes + country. ` +
+      `Rules: ` +
+      `(1) Material specificity — "22kt yellow gold" not just "gold", "VVS diamond" not just "diamond". ` +
+      `(2) Brand first — if user names a brand, put it first: "Tanishq 22kt gold chain ${c}". ` +
+      `(3) Occasion — include it: engagement, wedding, anniversary, gifting, daily wear, office wear. ` +
+      `(4) Recipient — include it: men, women, kids, boys, girls, baby, bride. ` +
+      `(5) Style — include if mentioned: solitaire, cluster, tennis, choker, bangle, stud, hoop. ` +
+      `(6) Budget — NEVER put price numbers in the query. Extract budget to maxPrice/minPrice fields. ` +
+      `GOOD: "22kt gold necklace women ${c}" | "VVS diamond engagement ring platinum ${c}" | "kids gold chain boys 22kt ${c}". ` +
+      `BAD: "affordable gold ring" | "ring under 50000" | "nice jewelry for wife".`
+    ),
+    firecrawl: (
+      `Short keyword-style search query: jewelry type + key attributes only. ` +
+      `e.g. "gold chain necklace kids boys ${c}" or "diamond ring women white gold ${c}". ` +
+      `No sentences, no filler words.`
+    )
+  };
+}
 
-function buildSearchTool(activeTool) {
+function buildSearchTool(activeTool, cfg) {
+  const localeLabel = cfg?.locale || 'India';
+  const currency    = cfg?.currency || 'INR';
+  const symbol      = cfg?.symbol || '₹';
+
+  const styles = buildQueryStyle(activeTool, localeLabel);
   const properties = {
-    query: { type: 'string', description: QUERY_STYLE[activeTool] || QUERY_STYLE.serpapi }
+    query: { type: 'string', description: styles[activeTool] || styles.serpapi }
   };
 
   // Serper gets structured budget fields so the filter can enforce a price ceiling/floor
   if (activeTool === 'serpapi') {
+    const BUDGET_HINTS = {
+      INR: {
+        affordable: 'gold=18000, diamond=45000, silver=4000, default=12000',
+        midrange:   'gold=50000, diamond=150000, silver=12000, default=40000',
+        luxury:     'gold=80000, diamond=200000, default=60000',
+        example:    `"under ${symbol}50,000" → 50000`
+      },
+      USD: {
+        affordable: 'gold=400, diamond=1200, default=300',
+        midrange:   'gold=1500, diamond=5000, default=1000',
+        luxury:     'gold=2000, diamond=8000, default=1500',
+        example:    `"under ${symbol}1,500" → 1500`
+      },
+      JPY: {
+        affordable: 'gold=60000, diamond=150000, default=40000',
+        midrange:   'gold=200000, diamond=600000, default=150000',
+        luxury:     'gold=500000, diamond=1500000, default=400000',
+        example:    `"under ${symbol}100,000" → 100000`
+      }
+    };
+    const h = BUDGET_HINTS[currency] || BUDGET_HINTS.INR;
+
     properties.maxPrice = {
       type: 'number',
       description: [
-        'Budget ceiling in local currency. Three cases:',
-        '1. Explicit number — use it directly: "under ₹50,000" → 50000, "budget ₹1 lakh" → 100000.',
-        '2. Vague budget word — estimate from category + locale:',
-        '   India (INR): affordable/cheap/budget → gold=18000, diamond=45000, silver=4000, default=12000.',
-        '   India (INR): mid-range → gold=50000, diamond=150000, silver=12000, default=40000.',
-        '   USA (USD): affordable → gold=400, diamond=1200, default=300.',
-        '   USA (USD): mid-range → gold=1500, diamond=5000, default=1000.',
+        `Budget ceiling in ${currency} (${symbol}). IMPORTANT: the current session currency is ${currency} — express ALL prices in ${currency}, do NOT use values from a previous region.`,
+        `1. Explicit number — use it directly: ${h.example}.`,
+        `2. Vague budget word — estimate: affordable → ${h.affordable}; mid-range → ${h.midrange}.`,
         '3. No budget signal at all — set NULL. Do NOT invent a ceiling when the user did not imply one.'
       ].join(' ')
     };
     properties.minPrice = {
       type: 'number',
       description: [
-        'Budget floor in local currency. Three cases:',
-        '1. Explicit lower bound: "between ₹20,000 and ₹50,000" → 20000.',
-        '2. Vague premium/luxury word — estimate floor:',
-        '   India (INR): premium/luxury/high-end → gold=80000, diamond=200000, default=60000.',
-        '   USA (USD): premium/luxury → gold=2000, diamond=8000, default=1500.',
+        `Budget floor in ${currency} (${symbol}). IMPORTANT: current session currency is ${currency} — do NOT carry forward price numbers from a previous region.`,
+        `1. Explicit lower bound — use it directly in ${currency}.`,
+        `2. Vague premium/luxury word — estimate floor: ${h.luxury}.`,
         '3. No signal — set NULL.'
       ].join(' ')
     };
@@ -101,9 +125,9 @@ function buildSystemPrompt(country) {
 }
 
 // Non-streaming call — used for LLM #1 (intent + tool call detection)
-async function callLLM(messages, useTools, activeTool = 'serpapi') {
+async function callLLM(messages, useTools, activeTool = 'serpapi', cfg = {}) {
   const body = { model: process.env.MODEL || 'google/gemini-3-flash-preview', messages };
-  if (useTools) { body.tools = [buildSearchTool(activeTool)]; body.tool_choice = 'auto'; }
+  if (useTools) { body.tools = [buildSearchTool(activeTool, cfg)]; body.tool_choice = 'auto'; }
   const res = await axios.post(OPENROUTER_URL, body, { headers: orHeaders() });
   return res.data.choices[0].message;
 }
@@ -173,13 +197,30 @@ export async function chatStream(history, activeTool = 'serpapi', country = 'in'
 
   // LLM #1 — intent detection + query generation (query style depends on active tool)
   const t1 = Date.now();
-  const firstMsg = await callLLM(messages, true, activeTool);
+  const firstMsg = await callLLM(messages, true, activeTool, cfg);
   console.log(`[${requestId}] [TIMING] LLM #1 (Intent): ${Date.now() - t1}ms`);
 
   if (!firstMsg.tool_calls?.length) {
     const text = firstMsg.content;
     console.log(`[${requestId}] Mode: Conversational`);
-    onEvent({ type: 'text', delta: text });
+
+    const brandsMatch = text.match(/<brands>([\s\S]*?)<\/brands>/);
+    const cleanText = text.replace(/<brands>[\s\S]*?<\/brands>/g, '').trim();
+
+    // Stream word-by-word so the frontend shows the typing effect
+    const words = cleanText.split(' ');
+    for (let i = 0; i < words.length; i++) {
+      onEvent({ type: 'text', delta: (i === 0 ? '' : ' ') + words[i] });
+      await new Promise(r => setTimeout(r, 18));
+    }
+
+    if (brandsMatch) {
+      try {
+        const brands = JSON.parse(brandsMatch[1].trim());
+        if (Array.isArray(brands) && brands.length) onEvent({ type: 'brands', brands });
+      } catch {}
+    }
+
     onEvent({ type: 'done', searchQuery: null });
     return { reply: text, toolResults: null, searchQuery: null };
   }
