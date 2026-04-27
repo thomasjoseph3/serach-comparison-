@@ -1,49 +1,49 @@
 import { Router } from 'express';
 import { chat } from '../agent/llm.js';
+import { connectDB } from '../db/connection.js';
+import { requireAuth } from '../middleware/auth.js';
+import ChatSession from '../models/ChatSession.js';
+import Search from '../models/Search.js';
 
 const router = Router();
-const sessions = new Map();
 
-// Store search history per session
-function initSession(id) {
-  if (!sessions.has(id)) {
-    sessions.set(id, {
-      messages: [],
-      searches: []
-    });
-  }
-  return sessions.get(id);
-}
-
-router.post('/', async (req, res) => {
-  const { message, sessionId, activeTool, country } = req.body;
-
+router.post('/', requireAuth, async (req, res) => {
+  const { message, activeTool, country } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
-  const id = sessionId || 'default';
-  const session = initSession(id);
-  const history = session.messages;
+  await connectDB();
+  const userId = req.user.userId;
+  const tool   = activeTool || 'serper';
+  const region = country || 'in';
 
+  // Load or create the user's active session
+  let session = await ChatSession.findOne({ userId }).sort({ updatedAt: -1 });
+  if (!session) session = await ChatSession.create({ userId, messages: [] });
+
+  const history = session.messages.map(m => ({ role: m.role, content: m.content }));
   history.push({ role: 'user', content: message });
-  console.log(`[chat] session=${id} tool=${activeTool || 'serper'} country=${country || 'in'} msg="${message.slice(0, 60)}"`);
+
+  console.log(`[chat] user=${req.user.username} tool=${tool} country=${region} msg="${message.slice(0, 60)}"`);
 
   try {
-    const { message: reply, toolResults, searchQuery } = await chat(history, activeTool || 'serper', country || 'in');
+    const { message: reply, toolResults, searchQuery } = await chat(history, tool, region);
     history.push({ role: 'assistant', content: reply });
-    console.log(`[chat] reply ready, search=${searchQuery || 'none'}`);
 
-    // Store search in history for comparison
-    if (searchQuery && toolResults) {
-      const tool = activeTool || 'serper';
-      const results = toolResults[tool]?.results || [];
-      session.searches.push({
-        id: `search_${session.searches.length + 1}`,
-        timestamp: new Date().toISOString(),
+    // Persist updated messages
+    session.messages = history;
+    await session.save();
+
+    // Save search to history
+    if (searchQuery && toolResults?.[tool]) {
+      const results = toolResults[tool].results || [];
+      await Search.create({
+        userId,
         query: searchQuery,
         tool,
-        country,
-        resultCount: results.length,
-        results: results.slice(0, 5) // Store top 5 for comparison
+        country: region,
+        aiReply: reply,
+        results: results.slice(0, 20),
+        resultCount: results.length
       });
     }
 
@@ -54,15 +54,21 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Get search history for comparison
-router.get('/history/:sessionId', (req, res) => {
-  const session = sessions.get(req.params.sessionId || 'default');
-  if (!session) return res.json({ searches: [] });
-  res.json({ searches: session.searches });
+// Get user's search history
+router.get('/history', requireAuth, async (req, res) => {
+  await connectDB();
+  const searches = await Search
+    .find({ userId: req.user.userId })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .select('-__v');
+  res.json({ searches });
 });
 
-router.delete('/session', (req, res) => {
-  sessions.delete(req.body?.sessionId || 'default');
+// Clear user's current session (start fresh chat)
+router.delete('/session', requireAuth, async (req, res) => {
+  await connectDB();
+  await ChatSession.deleteMany({ userId: req.user.userId });
   res.json({ ok: true });
 });
 
