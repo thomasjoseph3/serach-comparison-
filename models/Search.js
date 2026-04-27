@@ -24,7 +24,7 @@ const productSchema = new mongoose.Schema({
 const searchSchema = new mongoose.Schema({
   userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   query:     { type: String, required: true },
-  tool:      { type: String, default: 'serper' },
+  tool:      { type: String, default: 'serpapi' },
   country:   { type: String, default: 'in' },
   aiReply:   String,
   results:   [productSchema],

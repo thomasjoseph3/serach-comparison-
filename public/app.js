@@ -5,7 +5,7 @@ try { currentUser = JSON.parse(localStorage.getItem('auth_user')); } catch {}
 
 // ── Tool / Country meta ───────────────────────────────────
 const TOOL_META = {
-  serper:    { icon: '🔍', label: 'SerpAPI' },
+  serpapi:   { icon: '🔍', label: 'SerpAPI' },
   exa:       { icon: '✦',  label: 'Exa' },
   tavily:    { icon: '◈',  label: 'Tavily' },
   firecrawl: { icon: '🔥', label: 'Firecrawl' }
@@ -15,8 +15,8 @@ const COUNTRY_META = {
   us: { flag: '🇺🇸', label: 'USA',    currency: 'USD' },
   jp: { flag: '🇯🇵', label: 'Japan',  currency: 'JPY' }
 };
-let activeTool    = 'serper';
-let activeCountry = 'in';
+let activeTool    = localStorage.getItem('pref_tool')    || 'serpapi';
+let activeCountry = localStorage.getItem('pref_country') || 'in';
 let isSending     = false;
 
 // ── DOM ───────────────────────────────────────────────────
@@ -47,7 +47,13 @@ const compareClose  = document.getElementById('compareClose');
 
 // ── Boot ──────────────────────────────────────────────────
 if (authToken && currentUser) {
-  showToolOverlay();
+  loginScreen.style.display = 'none';
+  const returning = !!localStorage.getItem('pref_tool');
+  if (returning) {
+    launchApp();
+  } else {
+    showToolOverlay();
+  }
 } else {
   loginScreen.style.display = 'flex';
 }
@@ -98,6 +104,8 @@ function showLoginError(msg) {
 btnLogout.addEventListener('click', () => {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('auth_user');
+  localStorage.removeItem('pref_tool');
+  localStorage.removeItem('pref_country');
   location.reload();
 });
 
@@ -125,9 +133,16 @@ document.querySelectorAll('.country-option').forEach(btn => {
   });
 });
 
-document.getElementById('btnStart').addEventListener('click', () => {
+document.getElementById('btnStart').addEventListener('click', async () => {
+  // Save preferences so next visit skips this overlay
+  localStorage.setItem('pref_tool', activeTool);
+  localStorage.setItem('pref_country', activeCountry);
   overlay.style.display = 'none';
-  appEl.style.display   = 'flex';
+  await launchApp();
+});
+
+async function launchApp() {
+  appEl.style.display = 'flex';
   updateToolBadge();
   countryBadge.textContent = COUNTRY_META[activeCountry].flag;
   countryBadge.title = COUNTRY_META[activeCountry].label;
@@ -135,9 +150,45 @@ document.getElementById('btnStart').addEventListener('click', () => {
     userBadge.title = currentUser.name;
     userBadge.textContent = currentUser.name.slice(0, 1).toUpperCase();
   }
-  showWelcome();
+  await restoreSession();
   inputEl.focus();
-});
+}
+
+async function restoreSession() {
+  try {
+    const res  = await fetch('/api/chat/session', { headers: authHeaders() });
+    const data = await res.json();
+    const msgs = data.messages || [];
+
+    if (!msgs.length) { showWelcome(); return; }
+
+    // Show a divider so the user knows this is restored history
+    const divider = document.createElement('p');
+    divider.style.cssText = 'text-align:center;font-size:11px;color:var(--muted);padding:8px 0;';
+    divider.textContent = '— Previous conversation —';
+    messagesEl.appendChild(divider);
+
+    for (const msg of msgs) {
+      if (msg.role === 'user') {
+        appendUserMsg(msg.content);
+      } else {
+        appendAIMsg(msg.content, null);
+      }
+    }
+
+    btnCompare.style.display = 'flex';
+
+    // Divider before new messages
+    const newDivider = document.createElement('p');
+    newDivider.style.cssText = 'text-align:center;font-size:11px;color:var(--muted);padding:8px 0;';
+    newDivider.textContent = '— Continue below —';
+    messagesEl.appendChild(newDivider);
+
+    scrollBottom();
+  } catch {
+    showWelcome();
+  }
+}
 
 // ── Header tool switcher ──────────────────────────────────
 activeToolBtn.addEventListener('click', e => {
@@ -292,49 +343,49 @@ function appendAIMsg(text, searchQuery) {
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  row.appendChild(bubble);
+  let hasBubbleContent = false;
+  const afterBubble = []; // cards & brands render outside the bubble (full-width)
 
-  // Parse <cards> and <brands> blocks
   const parts = text.split(/(<cards>[\s\S]*?<\/cards>|<brands>[\s\S]*?<\/brands>)/g);
   for (const part of parts) {
     if (part.startsWith('<cards>')) {
       const json = part.slice('<cards>'.length, -'</cards>'.length).trim();
       try {
-        const items = JSON.parse(json);
-        bubble.appendChild(renderCards(items));
+        afterBubble.push(renderCards(JSON.parse(json)));
       } catch {
         const pre = document.createElement('pre');
         pre.style.cssText = 'font-size:11px;color:var(--muted);overflow:auto;';
         pre.textContent = json;
         bubble.appendChild(pre);
+        hasBubbleContent = true;
       }
     } else if (part.startsWith('<brands>')) {
       const json = part.slice('<brands>'.length, -'</brands>'.length).trim();
-      try {
-        const brands = JSON.parse(json);
-        bubble.appendChild(renderBrandChips(brands));
-      } catch { /* skip malformed */ }
+      try { afterBubble.push(renderBrandChips(JSON.parse(json))); } catch {}
     } else {
       const trimmed = part.trim();
       if (trimmed) {
-        // Catch stray disclaimer JSON the AI occasionally emits outside <cards>
         if (trimmed.startsWith('{"type":"disclaimer"')) {
           try {
             const d = JSON.parse(trimmed);
             const dis = document.createElement('div');
             dis.className = 'disclaimer';
             dis.textContent = d.text;
-            bubble.appendChild(dis);
+            afterBubble.push(dis);
             continue;
-          } catch { /* fall through to plain text */ }
+          } catch {}
         }
         const p = document.createElement('p');
         p.style.whiteSpace = 'pre-wrap';
         p.textContent = trimmed;
         bubble.appendChild(p);
+        hasBubbleContent = true;
       }
     }
   }
+
+  if (hasBubbleContent) row.appendChild(bubble);
+  for (const el of afterBubble) row.appendChild(el);
 
   messagesEl.appendChild(row);
   scrollBottom();
@@ -371,7 +422,7 @@ function renderBrandChips(brands) {
 // ── Render product cards ──────────────────────────────────
 function renderCards(items) {
   const wrap = document.createElement('div');
-  wrap.className = 'cards-wrap';
+  wrap.className = 'cards-outer';
 
   const products    = items.filter(i => i.type === 'product');
   const disclaimers = items.filter(i => i.type === 'disclaimer');
@@ -384,32 +435,96 @@ function renderCards(items) {
   for (const p of products) {
     const card = document.createElement('div');
     card.className = 'p-card';
-    card.style.cursor = 'pointer';
+
+    // ── Image section ────────────────────────────────────
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'p-card-img-wrap';
 
     if (p.image_url) {
       const img = document.createElement('img');
       img.className = 'p-card-img';
       img.src = p.image_url;
-      img.alt = p.name;
+      img.alt = p.name || '';
       img.loading = 'lazy';
-      img.onerror = () => img.replaceWith(gemPlaceholder());
-      card.appendChild(img);
+      img.onerror = () => { imgWrap.innerHTML = '💎'; imgWrap.classList.add('p-card-no-img'); };
+      imgWrap.appendChild(img);
+
+      // Dark gradient so overlaid text is readable
+      const grad = document.createElement('div');
+      grad.className = 'p-card-img-gradient';
+      imgWrap.appendChild(grad);
+
+      // Price overlaid bottom-left
+      if (p.price) {
+        const priceEl = document.createElement('div');
+        priceEl.className = 'p-card-price-overlay';
+        priceEl.textContent = p.price;
+        imgWrap.appendChild(priceEl);
+      }
+
+      // Rating overlaid bottom-right
+      if (p.rating) {
+        const ratingEl = document.createElement('div');
+        ratingEl.className = 'p-card-rating-overlay';
+        ratingEl.textContent = `★ ${p.rating}`;
+        imgWrap.appendChild(ratingEl);
+      }
+
+      // Discount badge top-right
+      if (p.discount) {
+        const discEl = document.createElement('div');
+        discEl.className = 'p-card-discount-badge';
+        discEl.textContent = p.discount;
+        imgWrap.appendChild(discEl);
+      }
     } else {
-      card.appendChild(gemPlaceholder());
+      imgWrap.classList.add('p-card-no-img');
+      imgWrap.textContent = '💎';
+      // Show price in placeholder
+      if (p.price) {
+        const priceEl = document.createElement('div');
+        priceEl.className = 'p-card-price-no-img';
+        priceEl.textContent = p.price;
+        imgWrap.appendChild(priceEl);
+      }
     }
 
+    card.appendChild(imgWrap);
+
+    // ── Body section ─────────────────────────────────────
     const body = document.createElement('div');
     body.className = 'p-card-body';
-    body.innerHTML = `
-      <div class="p-card-name">${esc(p.name)}</div>
-      <div class="p-card-price">${esc(p.price || 'See website')}</div>
-      ${p.original_price ? `<div class="p-card-orig">${esc(p.original_price)}</div>` : ''}
-      ${p.discount       ? `<div class="p-card-disc">${esc(p.discount)}</div>`       : ''}
-      ${p.retailer       ? `<div class="p-card-store">${esc(p.retailer)}</div>`      : ''}
-      ${p.rating         ? `<div class="p-card-rating">★ ${p.rating}${p.reviews ? ` (${p.reviews})` : ''}</div>` : ''}
-      ${p.why            ? `<div class="p-card-why">${esc(p.why)}</div>`             : ''}
-      ${p.url            ? `<a class="p-card-link" href="${esc(p.url)}" target="_blank" rel="noopener">View product ↗</a>` : ''}
-    `;
+
+    const name = document.createElement('div');
+    name.className = 'p-card-name';
+    name.textContent = p.name || 'Untitled';
+    body.appendChild(name);
+
+    if (p.retailer) {
+      const retailer = document.createElement('div');
+      retailer.className = 'p-card-retailer';
+      retailer.textContent = p.retailer;
+      body.appendChild(retailer);
+    }
+
+    if (p.why) {
+      const why = document.createElement('div');
+      why.className = 'p-card-why';
+      why.textContent = p.why;
+      body.appendChild(why);
+    }
+
+    if (p.url) {
+      const link = document.createElement('a');
+      link.className = 'p-card-btn';
+      link.href = p.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'View product ↗';
+      link.addEventListener('click', e => e.stopPropagation());
+      body.appendChild(link);
+    }
+
     card.appendChild(body);
 
     if (p.url) {
@@ -433,13 +548,6 @@ function renderCards(items) {
   return wrap;
 }
 
-function gemPlaceholder() {
-  const d = document.createElement('div');
-  d.className = 'p-card-img-placeholder';
-  d.textContent = '💎';
-  return d;
-}
-
 // ── Clear (new conversation) ──────────────────────────────
 btnClear.addEventListener('click', async () => {
   await fetch('/api/chat/session', {
@@ -458,13 +566,20 @@ compareModal.addEventListener('click', e => {
   if (e.target === compareModal) compareModal.classList.add('hidden');
 });
 
+function extractCardsFromReply(aiReply) {
+  if (!aiReply) return null;
+  const m = aiReply.match(/<cards>([\s\S]*?)<\/cards>/);
+  if (!m) return null;
+  try { return JSON.parse(m[1].trim()); } catch { return null; }
+}
+
 async function showHistoryModal() {
   compareSearches.innerHTML = '<div class="compare-empty"><p>Loading…</p></div>';
   compareModal.classList.remove('hidden');
 
   try {
-    const res     = await fetch('/api/chat/history', { headers: authHeaders() });
-    const data    = await res.json();
+    const res      = await fetch('/api/chat/history', { headers: authHeaders() });
+    const data     = await res.json();
     const searches = data.searches || [];
 
     if (!searches.length) {
@@ -472,35 +587,40 @@ async function showHistoryModal() {
       return;
     }
 
-    compareSearches.innerHTML = searches.map(s => {
-      const when = new Date(s.createdAt).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-      const toolMeta = TOOL_META[s.tool] || TOOL_META.serper;
+    compareSearches.innerHTML = '';
+
+    for (const s of searches) {
+      const when        = new Date(s.createdAt).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      const toolMeta    = TOOL_META[s.tool] || TOOL_META.serpapi;
       const countryMeta = COUNTRY_META[s.country] || COUNTRY_META.in;
 
-      const previewCards = (s.results || []).slice(0, 3).map(r => `
-        <div class="result-preview">
-          ${r.image_url ? `<img src="${esc(r.image_url)}" class="result-preview-img" loading="lazy" onerror="this.style.display='none'" />` : ''}
-          <div class="result-preview-info">
-            <div class="result-preview-title">${esc(r.name || 'Untitled')}</div>
-            ${r.price    ? `<div class="result-preview-price">${esc(r.price)}</div>` : ''}
-            ${r.retailer ? `<small>${esc(r.retailer)}</small>` : ''}
-          </div>
-        </div>`).join('');
+      const item = document.createElement('div');
+      item.className = 'search-item';
 
-      return `
-        <div class="search-item">
-          <div class="search-item-header">
-            <div class="search-query">${esc(s.query)}</div>
-            <div class="search-meta-row">
-              <span>${toolMeta.icon} ${toolMeta.label}</span>
-              <span>${countryMeta.flag} ${countryMeta.label}</span>
-              <span>📊 ${s.resultCount || 0} results</span>
-              <span>🕐 ${when}</span>
-            </div>
+      // Header
+      item.innerHTML = `
+        <div class="search-item-header">
+          <div class="search-query">${esc(s.query)}</div>
+          <div class="search-meta-row">
+            <span>${toolMeta.icon} ${toolMeta.label}</span>
+            <span>${countryMeta.flag} ${countryMeta.label}</span>
+            <span>📊 ${s.resultCount || 0} results</span>
+            <span>🕐 ${when}</span>
           </div>
-          ${previewCards ? `<div class="search-results-preview">${previewCards}</div>` : ''}
         </div>`;
-    }).join('');
+
+      // Cards — parse from aiReply so images/data match exactly what was shown in chat
+      const parsed = extractCardsFromReply(s.aiReply);
+      if (parsed?.length) {
+        item.appendChild(renderCards(parsed));
+      } else if (s.results?.length) {
+        // Fallback: build card-compatible objects from raw DB results
+        const fallback = s.results.map(r => ({ type: 'product', ...r }));
+        item.appendChild(renderCards(fallback));
+      }
+
+      compareSearches.appendChild(item);
+    }
   } catch {
     compareSearches.innerHTML = '<div class="compare-empty"><p>Failed to load history.</p></div>';
   }

@@ -67,7 +67,7 @@ function formatForAI(results) {
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-export async function chat(history, activeTool = 'serper', country = 'in') {
+export async function chat(history, activeTool = 'serpapi', country = 'in') {
   const cfg = COUNTRY_CONFIG[country] || COUNTRY_CONFIG.us;
   const messages = [{ role: 'system', content: buildSystemPrompt(country) }, ...history];
 
@@ -88,13 +88,13 @@ export async function chat(history, activeTool = 'serper', country = 'in') {
     exa:       () => searchExa(query, cfg),
     tavily:    () => searchTavily(query, cfg),
     firecrawl: () => searchFirecrawl(query, cfg),
-    serper:    () => searchSerper(query, cfg)
+    serpapi:   () => searchSerper(query, cfg)
   };
 
-  const runner = toolRunners[activeTool] || toolRunners.serper;
+  const runner = toolRunners[activeTool] || toolRunners.serpapi;
   const result = await runner().catch(e => ({ results: [], error: e.message }));
 
-  const toolResults = { exa: null, tavily: null, firecrawl: null, serper: null };
+  const toolResults = { exa: null, tavily: null, firecrawl: null, serpapi: null };
   toolResults[activeTool] = result;
   console.log(`  → ${activeTool} returned ${result.results?.length ?? 0} results`);
 

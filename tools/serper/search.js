@@ -51,26 +51,37 @@ export async function searchSerper(query, cfg) {
 
   console.log(`  [SerpAPI] returned ${items.length} results`);
 
-  // Normalise both shopping and organic result shapes with enhanced details
-  const results = items.map(r => ({
-    name:        r.title || r.product_title || 'Untitled',
-    price:       r.price || r.extracted_price || null,
-    original_price: r.original_price || null,
-    rating:      (r.rating || r.average_rating) ?? null,
-    reviews:     (r.review_count || r.reviews) ?? null,
-    retailer:    r.source || r.displayed_link || new URL(r.link || '').hostname || 'Unknown',
-    url:         r.link || r.product_link || '',
-    image_url:   r.thumbnail || r.image || r.product_image || null,
-    description: r.snippet || r.description || r.product_snippet || '',
-    delivery:    r.delivery || null,
-    availability: r.availability || null,
-    in_stock:    r.in_stock !== false,
-    // Enhanced fields for jewelry
-    metal:       r.attributes?.metal || null,
-    stone:       r.attributes?.stone || null,
-    carat:       r.attributes?.carat || r.attributes?.weight || null,
-    clarity:     r.attributes?.clarity || null
-  }));
+  const OUT_OF_STOCK_PATTERN = /out of stock|unavailable|discontinued|no longer available|sold out/i;
 
+  // Normalise both shopping and organic result shapes with enhanced details
+  const results = items
+    .map(r => {
+      const availability = r.availability || null;
+      const explicitlyOutOfStock = availability && OUT_OF_STOCK_PATTERN.test(availability);
+      // Only mark in_stock true when Google explicitly says so; unknown stays null
+      const in_stock = r.in_stock === true ? true : r.in_stock === false || explicitlyOutOfStock ? false : null;
+
+      return {
+        name:         r.title || r.product_title || 'Untitled',
+        price:        r.price || r.extracted_price || null,
+        original_price: r.original_price || null,
+        rating:       (r.rating || r.average_rating) ?? null,
+        reviews:      (r.review_count || r.reviews) ?? null,
+        retailer:     r.source || r.displayed_link || new URL(r.link || '').hostname || 'Unknown',
+        url:          r.link || r.product_link || '',
+        image_url:    r.thumbnail || r.image || r.product_image || null,
+        description:  r.snippet || r.description || r.product_snippet || '',
+        delivery:     r.delivery || null,
+        availability,
+        in_stock,
+        metal:        r.attributes?.metal || null,
+        stone:        r.attributes?.stone || null,
+        carat:        r.attributes?.carat || r.attributes?.weight || null,
+        clarity:      r.attributes?.clarity || null
+      };
+    })
+    .filter(r => r.in_stock !== false);  // drop anything explicitly out of stock
+
+  console.log(`  [SerpAPI] ${results.length} results after availability filter`);
   return { results, raw };
 }

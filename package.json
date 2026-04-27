@@ -20,7 +20,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.14.2"
   },
-  "keywords": ["jewelry", "shopping", "ai-assistant", "serper", "exa", "tavily", "firecrawl"],
+  "keywords": ["jewelry", "shopping", "ai-assistant", "serpapi", "exa", "tavily", "firecrawl"],
   "author": "",
   "license": "MIT"
 }

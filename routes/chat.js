@@ -13,14 +13,15 @@ router.post('/', requireAuth, async (req, res) => {
 
   await connectDB();
   const userId = req.user.userId;
-  const tool   = activeTool || 'serper';
+  const tool   = activeTool || 'serpapi';
   const region = country || 'in';
 
   // Load or create the user's active session
   let session = await ChatSession.findOne({ userId }).sort({ updatedAt: -1 });
   if (!session) session = await ChatSession.create({ userId, messages: [] });
 
-  const history = session.messages.map(m => ({ role: m.role, content: m.content }));
+  // Keep last 20 messages to avoid unbounded token growth
+  const history = session.messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
   history.push({ role: 'user', content: message });
 
   console.log(`[chat] user=${req.user.username} tool=${tool} country=${region} msg="${message.slice(0, 60)}"`);
@@ -52,6 +53,13 @@ router.post('/', requireAuth, async (req, res) => {
     console.error('[chat error]', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error?.message || err.message });
   }
+});
+
+// Get current session messages (to restore chat on page load)
+router.get('/session', requireAuth, async (req, res) => {
+  await connectDB();
+  const session = await ChatSession.findOne({ userId: req.user.userId }).sort({ updatedAt: -1 });
+  res.json({ messages: session?.messages || [] });
 });
 
 // Get user's search history
