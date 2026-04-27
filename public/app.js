@@ -5,9 +5,8 @@ try { currentUser = JSON.parse(localStorage.getItem('auth_user')); } catch {}
 
 // ── Tool / Country meta ───────────────────────────────────
 const TOOL_META = {
-  serpapi:   { icon: '🔍', label: 'SerpAPI' },
-  exa:       { icon: '✦',  label: 'Exa' },
-  firecrawl: { icon: '🔥', label: 'Firecrawl' }
+  serpapi: { icon: '🔍', label: 'SerpAPI' },
+  exa:     { icon: '✦',  label: 'Exa' }
 };
 const COUNTRY_META = {
   in: { flag: '🇮🇳', label: 'India',  currency: 'INR' },

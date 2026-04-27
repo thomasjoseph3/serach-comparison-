@@ -1,114 +1,162 @@
 import axios from 'axios';
-import { ONLINE_BRAND_DOMAINS } from '../../brands.js';
+import { getFirecrawlDomains } from '../../brands.js';
 
 const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v1/scrape';
-const TAVILY_URL = 'https://api.tavily.com/search';
+const TAVILY_URL           = 'https://api.tavily.com/search';
 
-/**
- * STEP 1: Use Tavily to find the most accurate product URL.
- * Tavily is better at finding direct product pages than Google.
- */
-async function findBestUrls(query) {
+// ─── Build a product-focused search query ────────────────────────────────────
+const LOCALE_LABEL = { in: 'India', us: 'USA', gb: 'UK', jp: 'Japan' };
+
+function buildProductQuery(query, gl = 'in') {
+  const label = LOCALE_LABEL[gl] || 'India';
+  return `${query} buy online ${label} jewelry`;
+}
+
+// ─── Step 1: Tavily discovers product URLs restricted to Indian brand domains ─
+async function findBrandProductUrls(query, domains) {
   if (!process.env.TAVILY_API_KEY) {
-    console.error("  [Discovery] TAVILY_API_KEY missing");
+    console.error('  [Firecrawl] TAVILY_API_KEY missing');
     return [];
   }
-  
+
+  const domainSet = new Set(domains);
+  console.log(`    -> Tavily: Searching ${domains.length} brand domains for "${query}"`);
+
   try {
     const res = await axios.post(TAVILY_URL, {
-      api_key: process.env.TAVILY_API_KEY,
-      query: query,
-      search_depth: "advanced",
-      include_domains: ONLINE_BRAND_DOMAINS.slice(0, 50), // Tavily has a limit on domain count per query
-      max_results: 5
+      api_key:         process.env.TAVILY_API_KEY,
+      query:           query,
+      search_depth:    'advanced',
+      include_domains: domains,
+      max_results:     8
     });
 
-    // Filter results again against our full list just to be sure
-    return (res.data.results || [])
+    const urls = (res.data.results || [])
       .map(r => r.url)
       .filter(url => {
         try {
-          const hostname = new URL(url).hostname.replace('www.', '');
-          return ONLINE_BRAND_DOMAINS.includes(hostname);
-        } catch { return false; }
+          const hostname = new URL(url).hostname.replace(/^www\./, '');
+          if (!domainSet.has(hostname)) return false;
+          return !/\/(blog|guide|education|about|faq|help|contact|news|article)/i.test(url);
+        } catch {
+          return false;
+        }
       })
-      .slice(0, 3);
+      .slice(0, 5);
+
+    console.log(`    -> Tavily: Found ${urls.length} brand product URLs:`);
+    urls.forEach((u, i) => console.log(`       ${i + 1}. ${u}`));
+    return urls;
   } catch (err) {
-    console.error("  [Tavily Discovery Error]", err.response?.data || err.message);
+    console.error('    [Tavily Error]', err.response?.data || err.message);
     return [];
   }
 }
 
-/**
- * STEP 2: Use Firecrawl to get live JS-rendered data from that specific URL.
- */
-async function scrapeUrl(url) {
+// ─── Deduplicate URLs by base path (strip query strings like srsltid) ─────────
+function dedupeUrls(urls) {
+  const seen = new Set();
+  const result = [];
+  for (const url of urls) {
+    try {
+      const u = new URL(url);
+      // Filter out bare homepages (path is just "/" or empty)
+      if (!u.pathname || u.pathname === '/') continue;
+      const key = u.hostname + u.pathname;  // ignores ?srsltid=... params
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(url);
+      }
+    } catch {}
+  }
+  return result;
+}
+
+// ─── Step 2: Firecrawl scrapes each product page ─────────────────────────────
+async function scrapeProductPage(url) {
+  console.log(`    -> Firecrawl: Scraping ${url.slice(0, 70)}...`);
   try {
     const res = await axios.post(
       FIRECRAWL_SCRAPE_URL,
-      { 
-        url, 
-        formats: ['markdown'],
-        scrapeOptions: { onlyMainContent: true }
+      {
+        url,
+        formats: ['markdown']   // do NOT include 'extract' here — needs separate format flag
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.FIRE_CRAWL_API_KEY}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${process.env.FIRE_CRAWL_API_KEY}`,
+          'Content-Type':  'application/json'
         },
-        timeout: 15000 
+        timeout: 20000
       }
     );
 
     if (res.data?.success && res.data.data) {
-      const d = res.data.data;
+      const d        = res.data.data;
       const metadata = d.metadata || {};
+
+      // Pull best available values from page metadata + markdown
+      const name      = metadata.title || d.title || 'Untitled';
+      const price     = metadata.price || extractPriceFromText(d.markdown || '') || null;
+      const image_url = metadata.ogImage || metadata.og?.image || metadata.image || null;
+      const desc      = metadata.description || (d.markdown || '').slice(0, 400);
+
+      console.log(`    -> Firecrawl: OK — "${name.slice(0, 50)}" | ${price || 'no price'} | img=${!!image_url}`);
+
       return {
-        name: metadata.title || d.title || 'Untitled',
-        url: url,
-        price: metadata.price || extractPriceFromText(d.markdown || ''),
-        retailer: new URL(url).hostname.replace('www.', ''),
-        description: (d.markdown || metadata.description || '').slice(0, 400),
-        image_url: metadata.ogImage || metadata.image || null,
-        in_stock: true
+        name,
+        url,
+        price,
+        retailer:     new URL(url).hostname.replace(/^www\./, ''),
+        description:  desc,
+        image_url,
+        in_stock:     /out of stock|unavailable/i.test(extracted.availability || '') ? false : true,
+        availability: extracted.availability || 'Check website'
       };
     }
+
+    console.log(`    -> Firecrawl: No data for ${url.slice(0, 50)}`);
   } catch (err) {
-    console.error(`  [Scrape Error for ${url}]`, err.message);
+    console.log(`    -> Firecrawl: Error [${url.slice(0, 50)}] — ${err.message}`);
   }
   return null;
 }
 
+// ─── Helper: extract first price pattern from raw markdown ───────────────────
 function extractPriceFromText(text) {
-  const m = text.match(/[\$£₹€][\d,]+(?:\.\d{1,2})?/);
+  const m = text.match(/[₹$£€][\d,]+(?:\.\d{1,2})?/);
   return m ? m[0] : null;
 }
 
+// ─── Main export ─────────────────────────────────────────────────────────────
 export async function searchFirecrawl(query, cfg) {
-  console.log(`  [Firecrawl+Tavily Hybrid] 1. Finding URLs with Tavily: "${query}"`);
-  
-  const urls = await findBestUrls(query);
-  
+  const gl      = cfg?.gl || 'in';
+  const domains = getFirecrawlDomains(gl);
+  const productQuery = buildProductQuery(query, gl);
+
+  console.log(`  [Firecrawl] locale=${gl} | ${domains.length} brand domains | query: "${productQuery}"`);
+
+  const urls = dedupeUrls(await findBrandProductUrls(productQuery, domains));
+
   if (!urls.length) {
-    console.log(`  [Firecrawl+Tavily Hybrid] No matching product URLs found.`);
-    return { results: [], error: "Product not found on authorized retailers." };
+    console.log('  [Firecrawl] No brand product URLs found from Tavily.');
+    return { results: [], error: 'No product pages found on brand sites for this region.' };
   }
 
-  console.log(`  [Firecrawl+Tavily Hybrid] 2. Scraping ${urls.length} sites via Firecrawl...`);
+  // Scrape all URLs in parallel (Firecrawl handles its own rate limits)
+  const scraped = await Promise.all(urls.map(scrapeProductPage));
 
-  const scrapers = urls.map(url => scrapeUrl(url));
-  const scrapedResults = await Promise.all(scrapers);
+  const results = scraped
+    .filter(Boolean)
+    .map(r => ({
+      ...r,
+      rating:   null,   // Firecrawl scrape doesn't reliably get ratings
+      reviews:  null,
+      delivery: null,
+      metal:    null,
+      stone:    null
+    }));
 
-  const results = scrapedResults.filter(Boolean).map(r => ({
-    ...r,
-    rating: null,
-    reviews: null,
-    delivery: null,
-    metal: null,
-    stone: null,
-    availability: 'In Stock'
-  }));
-
-  console.log(`  [Firecrawl+Tavily Hybrid] Done. Found ${results.length} high-accuracy results.`);
+  console.log(`  [Firecrawl] Complete. ${results.length}/${urls.length} pages scraped successfully.`);
   return { results, raw: { urls_found: urls } };
 }

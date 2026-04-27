@@ -27,19 +27,22 @@ router.post('/', requireAuth, async (req, res) => {
   let session = await ChatSession.findOne({ userId }).sort({ updatedAt: -1 });
   if (!session) session = await ChatSession.create({ userId, messages: [] });
 
-  const history = session.messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
-  history.push({ role: 'user', content: message });
+  // LLM context — role+content only (no product blobs sent to the model)
+  const llmHistory = session.messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
+  llmHistory.push({ role: 'user', content: message });
 
   console.log(`[chat] user=${req.user.username} tool=${tool} country=${region} msg="${message.slice(0, 60)}"`);
 
   try {
     let fullReply = '';
-    const result = await chatStream(history, tool, region, event => {
+    const result = await chatStream(llmHistory, tool, region, event => {
       if (event.type === 'text') fullReply += event.delta;
       send(event);
     });
 
-    // Persist updated session (include raw products so they can be restored on refresh)
+    // Persist — keep original messages intact (products/searchQuery/tool preserved),
+    // then append the new user + assistant messages.
+    const newUserMsg = { role: 'user', content: message };
     const assistantMsg = {
       role: 'assistant',
       content: fullReply,
@@ -47,7 +50,7 @@ router.post('/', requireAuth, async (req, res) => {
       searchQuery: result.searchQuery || null,
       tool: result.searchQuery ? tool : null
     };
-    session.messages = [...history, assistantMsg];
+    session.messages = [...session.messages, newUserMsg, assistantMsg].slice(-50);
     await session.save();
 
     // Save search to history

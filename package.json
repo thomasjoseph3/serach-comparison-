@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "nodemon server.js",
     "build": "echo 'No build needed for Node.js'"
   },
   "dependencies": {
@@ -20,7 +20,18 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.14.2"
   },
-  "keywords": ["jewelry", "shopping", "ai-assistant", "serpapi", "exa", "tavily", "firecrawl"],
+  "keywords": [
+    "jewelry",
+    "shopping",
+    "ai-assistant",
+    "serpapi",
+    "exa",
+    "tavily",
+    "firecrawl"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
 }
