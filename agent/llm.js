@@ -139,8 +139,9 @@ export async function chatStream(history, activeTool = 'serpapi', country = 'in'
   onEvent({ type: 'searching', query, tool: activeTool });
 
   const toolRunners = {
-    exa:     () => searchExa(query, cfg),
-    serpapi: () => searchSerper(query, cfg)
+    exa:       () => searchExa(query, cfg),
+    serpapi:   () => searchSerper(query, cfg),
+    firecrawl: () => searchFirecrawl(query, cfg)
   };
 
   const t2 = Date.now();
@@ -179,10 +180,10 @@ STRICT RULES: Plain text only. No JSON. No markdown. No lists. No <cards> tags. 
   });
   console.log(`[TIMING] LLM#2 stream: ${Date.now() - t3}ms | total: ${Date.now() - t0}ms`);
 
-  // Send products directly from raw SerpAPI data — images and URLs are reliable
+  // Send products directly from raw tool data — images and URLs are reliable
   onEvent({ type: 'products', results: result.results || [] });
 
-  const toolResults = { exa: null, serpapi: null };
+  const toolResults = { exa: null, serpapi: null, firecrawl: null };
   toolResults[activeTool] = result;
 
   onEvent({ type: 'done', searchQuery: query });
