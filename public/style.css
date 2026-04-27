@@ -324,6 +324,20 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .bubble.loading { color: var(--muted); font-style: italic; }
 .bubble p + p { margin-top: 8px; }
 
+/* Markdown rendered inside AI bubbles */
+.msg-row.ai .bubble p { margin-bottom: 6px; }
+.msg-row.ai .bubble p:last-child { margin-bottom: 0; }
+.msg-row.ai .bubble strong { color: var(--gold); font-weight: 600; }
+.msg-row.ai .bubble em { color: var(--text); font-style: italic; }
+.msg-row.ai .bubble ol,
+.msg-row.ai .bubble ul { padding-left: 20px; margin: 6px 0; }
+.msg-row.ai .bubble li { margin-bottom: 6px; }
+.msg-row.ai .bubble h1, .msg-row.ai .bubble h2,
+.msg-row.ai .bubble h3, .msg-row.ai .bubble h4 {
+  font-family: var(--font-serif); color: var(--gold);
+  font-size: 15px; font-weight: 600; margin: 10px 0 4px;
+}
+
 /* Typing indicator */
 .typing-dots { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
 .typing-dots span {

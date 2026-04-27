@@ -34,7 +34,7 @@ export async function searchExa(query, cfg) {
       query: finalQuery,
       numResults: 15,       // fetch more to allow for filtering down to 10
       useAutoprompt: true,
-      type: 'neural',
+      type: 'auto',
       contents: { text: { maxCharacters: 500 } }
     },
     {

@@ -39,8 +39,15 @@ router.post('/', requireAuth, async (req, res) => {
       send(event);
     });
 
-    // Persist updated session
-    session.messages = [...history, { role: 'assistant', content: fullReply }];
+    // Persist updated session (include raw products so they can be restored on refresh)
+    const assistantMsg = {
+      role: 'assistant',
+      content: fullReply,
+      products: result.toolResults?.[tool]?.results || null,
+      searchQuery: result.searchQuery || null,
+      tool: result.searchQuery ? tool : null
+    };
+    session.messages = [...history, assistantMsg];
     await session.save();
 
     // Save search to history

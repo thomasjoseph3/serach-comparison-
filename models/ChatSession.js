@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
 
 const messageSchema = new mongoose.Schema({
-  role:    { type: String, enum: ['user', 'assistant'], required: true },
-  content: { type: String, required: true }
+  role:        { type: String, enum: ['user', 'assistant'], required: true },
+  content:     { type: String, required: true },
+  products:    { type: mongoose.Schema.Types.Mixed, default: null },
+  searchQuery: { type: String, default: null },
+  tool:        { type: String, default: null }
 }, { _id: false });
 
 const chatSessionSchema = new mongoose.Schema({

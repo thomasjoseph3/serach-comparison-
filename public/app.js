@@ -170,7 +170,7 @@ async function restoreSession() {
       if (msg.role === 'user') {
         appendUserMsg(msg.content);
       } else {
-        appendAIMsg(msg.content, null);
+        appendAIMsg(msg.content, msg.searchQuery || null, msg.products || null, msg.tool || null);
       }
     }
 
@@ -347,7 +347,7 @@ async function sendMessage() {
           const cutoff = fullText.indexOf('<cards>');
           const displayText = cutoff >= 0 ? fullText.slice(0, cutoff) : fullText;
           const display = displayText.replace(/<brands>[\s\S]*?<\/brands>/g, '').trim();
-          if (display) bubble.textContent = display;
+          if (display) bubble.innerHTML = marked.parse(display);
           scrollBottom();
 
         } else if (event.type === 'searching') {
@@ -429,7 +429,7 @@ function appendTyping() {
 }
 
 // ── Append AI message ─────────────────────────────────────
-function appendAIMsg(text, searchQuery) {
+function appendAIMsg(text, searchQuery, products, tool) {
   const row = document.createElement('div');
   row.className = 'msg-row ai';
 
@@ -442,52 +442,35 @@ function appendAIMsg(text, searchQuery) {
   let hasBubbleContent = false;
   const afterBubble = [];
   let totalProducts = 0;
-  const usedTool = activeTool; // snapshot which tool was active when this reply came in
+  const usedTool = tool || activeTool;
 
-  const parts = text.split(/(<cards>[\s\S]*?<\/cards>|<brands>[\s\S]*?<\/brands>)/g);
+  const parts = text.split(/(<brands>[\s\S]*?<\/brands>)/g);
   for (const part of parts) {
-    if (part.startsWith('<cards>')) {
-      const json = part.slice('<cards>'.length, -'</cards>'.length).trim();
-      try {
-        const items = JSON.parse(json);
-        totalProducts += items.filter(i => i.type === 'product').length;
-        afterBubble.push(renderCards(items, searchQuery, usedTool));
-      } catch {
-        const pre = document.createElement('pre');
-        pre.style.cssText = 'font-size:11px;color:var(--muted);overflow:auto;';
-        pre.textContent = json;
-        bubble.appendChild(pre);
-        hasBubbleContent = true;
-      }
-    } else if (part.startsWith('<brands>')) {
+    if (part.startsWith('<brands>')) {
       const json = part.slice('<brands>'.length, -'</brands>'.length).trim();
       try { afterBubble.push(renderBrandChips(JSON.parse(json))); } catch {}
     } else {
-      const trimmed = part.trim();
+      const trimmed = part.replace(/<cards>[\s\S]*?<\/cards>/g, '').trim();
       if (trimmed) {
-        if (trimmed.startsWith('{"type":"disclaimer"')) {
-          try {
-            const d = JSON.parse(trimmed);
-            const dis = document.createElement('div');
-            dis.className = 'disclaimer';
-            dis.textContent = d.text;
-            afterBubble.push(dis);
-            continue;
-          } catch {}
-        }
-        const p = document.createElement('p');
-        p.style.whiteSpace = 'pre-wrap';
-        p.textContent = trimmed;
-        bubble.appendChild(p);
+        const div = document.createElement('div');
+        div.innerHTML = marked.parse(trimmed);
+        bubble.appendChild(div);
         hasBubbleContent = true;
       }
     }
   }
 
+  // Restore product cards from saved DB data
+  if (products?.length) {
+    totalProducts = products.length;
+    const items = products.map(r => ({ type: 'product', ...r }));
+    afterBubble.push(renderCards(items, searchQuery, usedTool));
+  }
+
   row.appendChild(label);
 
   if (searchQuery) {
-    const m = TOOL_META[usedTool];
+    const m = TOOL_META[usedTool] || TOOL_META.serpapi;
     const badge = document.createElement('div');
     badge.className = 'tool-badge';
     const countStr = totalProducts > 0 ? ` · ${totalProducts} results` : '';
