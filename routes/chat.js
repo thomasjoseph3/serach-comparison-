@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { chat } from '../agent/llm.js';
+import { chatStream } from '../agent/llm.js';
 import { connectDB } from '../db/connection.js';
 import { requireAuth } from '../middleware/auth.js';
 import ChatSession from '../models/ChatSession.js';
@@ -11,58 +11,68 @@ router.post('/', requireAuth, async (req, res) => {
   const { message, activeTool, country } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
+  // SSE headers — Vercel holds this up to maxDuration (60s configured in vercel.json)
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = data => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
   await connectDB();
   const userId = req.user.userId;
   const tool   = activeTool || 'serpapi';
   const region = country || 'in';
 
-  // Load or create the user's active session
   let session = await ChatSession.findOne({ userId }).sort({ updatedAt: -1 });
   if (!session) session = await ChatSession.create({ userId, messages: [] });
 
-  // Keep last 20 messages to avoid unbounded token growth
   const history = session.messages.slice(-20).map(m => ({ role: m.role, content: m.content }));
   history.push({ role: 'user', content: message });
 
   console.log(`[chat] user=${req.user.username} tool=${tool} country=${region} msg="${message.slice(0, 60)}"`);
 
   try {
-    const { message: reply, toolResults, searchQuery } = await chat(history, tool, region);
-    history.push({ role: 'assistant', content: reply });
+    let fullReply = '';
+    const result = await chatStream(history, tool, region, event => {
+      if (event.type === 'text') fullReply += event.delta;
+      send(event);
+    });
 
-    // Persist updated messages
-    session.messages = history;
+    // Persist updated session
+    session.messages = [...history, { role: 'assistant', content: fullReply }];
     await session.save();
 
     // Save search to history
-    if (searchQuery && toolResults?.[tool]) {
-      const results = toolResults[tool].results || [];
+    if (result.searchQuery && result.toolResults?.[tool]) {
+      const rawResults = result.toolResults[tool].results || [];
       await Search.create({
         userId,
-        query: searchQuery,
+        query: result.searchQuery,
         tool,
         country: region,
-        aiReply: reply,
-        results: results.slice(0, 20),
-        resultCount: results.length
+        aiReply: fullReply,
+        results: rawResults.slice(0, 20),
+        resultCount: rawResults.length
       });
     }
 
-    res.json({ reply, toolResults, searchQuery });
+    res.end();
   } catch (err) {
     console.error('[chat error]', err.response?.data || err.message);
-    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+    send({ type: 'error', message: err.response?.data?.error?.message || err.message });
+    res.end();
   }
 });
 
-// Get current session messages (to restore chat on page load)
+// Restore chat session on page load
 router.get('/session', requireAuth, async (req, res) => {
   await connectDB();
   const session = await ChatSession.findOne({ userId: req.user.userId }).sort({ updatedAt: -1 });
   res.json({ messages: session?.messages || [] });
 });
 
-// Get user's search history
+// Search history for the comparison modal
 router.get('/history', requireAuth, async (req, res) => {
   await connectDB();
   const searches = await Search
@@ -73,7 +83,7 @@ router.get('/history', requireAuth, async (req, res) => {
   res.json({ searches });
 });
 
-// Clear user's current session (start fresh chat)
+// Clear session (new conversation)
 router.delete('/session', requireAuth, async (req, res) => {
   await connectDB();
   await ChatSession.deleteMany({ userId: req.user.userId });

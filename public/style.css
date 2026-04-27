@@ -609,25 +609,95 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   background: var(--gold); color: #000; border-color: var(--gold);
 }
 
-/* ── History result preview with images ──────────────────── */
+/* ── Re-run bar (below cards in chat) ────────────────────── */
+.rerun-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding: 10px 2px 2px;
+  border-top: 1px solid var(--border);
+}
+.rerun-label {
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.1em; flex-shrink: 0;
+}
+.rerun-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 20px;
+  padding: 4px 14px; font-size: 12px; font-weight: 500;
+  cursor: pointer; font-family: var(--font-body);
+  transition: border-color .15s, background .15s, color .15s;
+}
+.rerun-btn:hover {
+  border-color: var(--gold); background: rgba(201,168,76,.1); color: var(--gold);
+}
+
+/* ── History: grouped by query ───────────────────────────── */
+.search-group {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+}
+.search-group-query {
+  padding: 14px 16px 12px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+  font-family: var(--font-serif);
+  border-bottom: 1px solid var(--border);
+}
+.tool-run {
+  border-bottom: 1px solid var(--border);
+}
+.tool-run:last-child { border-bottom: none; }
+.tool-run-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; cursor: pointer; list-style: none;
+  transition: background .15s;
+}
+.tool-run-header:hover { background: rgba(255,255,255,.03); }
+.tool-run-header::-webkit-details-marker { display: none; }
+.tool-run-badge {
+  font-size: 13px; font-weight: 600; color: var(--gold); flex-shrink: 0;
+}
+.tool-run-meta {
+  font-size: 11px; color: var(--muted); flex: 1;
+}
+.tool-run-arrow {
+  color: var(--muted); font-size: 10px; flex-shrink: 0;
+  transition: transform .2s;
+}
+details[open] .tool-run-arrow { transform: rotate(90deg); }
+.tool-run > .cards-outer { padding: 0 16px 16px; }
+
+/* ── Tool badge (on AI messages in chat) ─────────────────── */
+.tool-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--gold-dim); margin-bottom: 4px; padding: 0 2px;
+}
+
+/* ── Shimmer loading cards ───────────────────────────────── */
+.shimmer-wrap {
+  display: flex; gap: 12px; overflow-x: auto;
+  padding: 8px 0 4px; margin: 4px 0;
+}
+.shimmer-wrap::-webkit-scrollbar { display: none; }
+.shimmer-card {
+  flex-shrink: 0;
+  width: 180px; height: 260px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--surface2) 0%,
+    var(--surface)  45%,
+    var(--surface2) 90%
+  );
+  background-size: 300% 100%;
+  animation: shimmer-sweep 1.4s ease-in-out infinite;
+}
+@keyframes shimmer-sweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ── Legacy search-item (kept for compatibility) ─────────── */
 .search-meta-row {
   display: flex; flex-wrap: wrap; gap: 10px;
-  font-size: 11px; color: var(--muted);
-  margin-top: 6px;
+  font-size: 11px; color: var(--muted); margin-top: 6px;
 }
-.result-preview {
-  display: flex; align-items: flex-start; gap: 8px;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px; font-size: 11px; line-height: 1.4;
-}
-.result-preview-img {
-  width: 44px; height: 44px; object-fit: cover;
-  border-radius: 6px; flex-shrink: 0; background: var(--surface);
-}
-.result-preview-info { flex: 1; min-width: 0; }
-.result-preview-title {
-  font-weight: 600; color: var(--text); margin-bottom: 2px;
-  display: -webkit-box; -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden;
-}
-.result-preview-price { color: var(--gold); font-weight: 600; }

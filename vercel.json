@@ -16,7 +16,8 @@
   "functions": {
     "server.js": {
       "memory": 512,
-      "maxDuration": 60
+      "maxDuration": 60,
+      "runtime": "nodejs22.x"
     }
   },
   "routes": [

@@ -5,10 +5,8 @@ try { currentUser = JSON.parse(localStorage.getItem('auth_user')); } catch {}
 
 // ── Tool / Country meta ───────────────────────────────────
 const TOOL_META = {
-  serpapi:   { icon: '🔍', label: 'SerpAPI' },
-  exa:       { icon: '✦',  label: 'Exa' },
-  tavily:    { icon: '◈',  label: 'Tavily' },
-  firecrawl: { icon: '🔥', label: 'Firecrawl' }
+  serpapi: { icon: '🔍', label: 'SerpAPI' },
+  exa:     { icon: '✦',  label: 'Exa' }
 };
 const COUNTRY_META = {
   in: { flag: '🇮🇳', label: 'India',  currency: 'INR' },
@@ -255,7 +253,19 @@ function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
 }
 
-// ── Send message ──────────────────────────────────────────
+// ── Shimmer cards (shown while SerpAPI is running) ───────
+function createShimmerCards(count = 4) {
+  const wrap = document.createElement('div');
+  wrap.className = 'shimmer-wrap';
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement('div');
+    card.className = 'shimmer-card';
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
+// ── Send message (SSE streaming) ──────────────────────────
 async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text || isSending) return;
@@ -264,7 +274,38 @@ async function sendMessage() {
   autoResize();
 
   appendUserMsg(text);
-  const loadingRow = appendTyping();
+
+  // Build AI message row incrementally
+  const row = document.createElement('div');
+  row.className = 'msg-row ai';
+
+  const label = document.createElement('span');
+  label.className = 'msg-label';
+  label.textContent = 'The Salesperson';
+  row.appendChild(label);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble loading';
+  bubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  row.appendChild(bubble);
+
+  messagesEl.appendChild(row);
+  scrollBottom();
+
+  let fullText = '';
+  let searchQuery = null;
+  let toolUsed = activeTool;
+  let shimmerEl = null;
+  let badgeEl = null;
+  let typingCleared = false;
+
+  function clearTyping() {
+    if (!typingCleared) {
+      bubble.className = 'bubble';
+      bubble.innerHTML = '';
+      typingCleared = true;
+    }
+  }
 
   try {
     const res = await fetch('/api/chat', {
@@ -274,27 +315,91 @@ async function sendMessage() {
     });
 
     if (res.status === 401) {
-      loadingRow.remove();
+      row.remove();
       localStorage.removeItem('auth_token');
       localStorage.removeItem('auth_user');
       location.reload();
       return;
     }
 
-    const data = await res.json();
-    loadingRow.remove();
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    if (!res.ok) {
-      appendAIMsg(`Something went wrong: ${data.error}`, null);
-    } else {
-      appendAIMsg(data.reply, data.searchQuery);
-      if (data.searchQuery) {
-        btnCompare.style.display = 'flex';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // keep last incomplete event
+
+      for (const part of parts) {
+        const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+        if (!dataLine) continue;
+        let event;
+        try { event = JSON.parse(dataLine.slice(6)); } catch { continue; }
+
+        if (event.type === 'text') {
+          clearTyping();
+          fullText += event.delta;
+          // Cut off display at <cards> — model sometimes outputs it despite instructions
+          const cutoff = fullText.indexOf('<cards>');
+          const displayText = cutoff >= 0 ? fullText.slice(0, cutoff) : fullText;
+          const display = displayText.replace(/<brands>[\s\S]*?<\/brands>/g, '').trim();
+          if (display) bubble.textContent = display;
+          scrollBottom();
+
+        } else if (event.type === 'searching') {
+          toolUsed = event.tool || activeTool;
+          searchQuery = event.query;
+          const m = TOOL_META[toolUsed];
+          // Badge only — shimmer comes after text is done
+          badgeEl = document.createElement('div');
+          badgeEl.className = 'tool-badge';
+          badgeEl.textContent = `${m.icon} ${m.label} · searching…`;
+          row.appendChild(badgeEl);
+          scrollBottom();
+
+        } else if (event.type === 'products') {
+          const m = TOOL_META[toolUsed];
+          const count = event.results.length;
+          if (badgeEl) badgeEl.textContent = `${m.icon} ${m.label}${count ? ` · ${count} results` : ''}`;
+
+          if (count) {
+            // Show shimmer briefly as a visual handoff from text → cards
+            shimmerEl = createShimmerCards();
+            row.appendChild(shimmerEl);
+            scrollBottom();
+
+            const items = event.results.map(r => ({ type: 'product', ...r }));
+            const cards = renderCards(items, searchQuery, toolUsed);
+            setTimeout(() => {
+              if (shimmerEl) { shimmerEl.remove(); shimmerEl = null; }
+              row.appendChild(cards);
+              scrollBottom();
+            }, 400);
+          }
+          btnCompare.style.display = 'flex';
+          scrollBottom();
+
+        } else if (event.type === 'brands') {
+          row.appendChild(renderBrandChips(event.brands));
+          scrollBottom();
+
+        } else if (event.type === 'error') {
+          clearTyping();
+          bubble.textContent = `Something went wrong: ${event.message}`;
+        }
       }
     }
+
+    // Remove empty bubble (search results with no LLM text)
+    if (typingCleared && !bubble.textContent.trim()) bubble.remove();
+
   } catch {
-    loadingRow.remove();
-    appendAIMsg('Network error — please try again.', null);
+    clearTyping();
+    bubble.textContent = 'Network error — please try again.';
   } finally {
     isSending = false;
     btnSend.disabled = false;
@@ -331,27 +436,22 @@ function appendAIMsg(text, searchQuery) {
   const label = document.createElement('span');
   label.className = 'msg-label';
   label.textContent = 'The Salesperson';
-  row.appendChild(label);
-
-  if (searchQuery) {
-    const m = TOOL_META[activeTool];
-    const badge = document.createElement('div');
-    badge.className = 'tool-badge';
-    badge.innerHTML = `${m.icon} Searched via ${m.label}`;
-    row.appendChild(badge);
-  }
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   let hasBubbleContent = false;
-  const afterBubble = []; // cards & brands render outside the bubble (full-width)
+  const afterBubble = [];
+  let totalProducts = 0;
+  const usedTool = activeTool; // snapshot which tool was active when this reply came in
 
   const parts = text.split(/(<cards>[\s\S]*?<\/cards>|<brands>[\s\S]*?<\/brands>)/g);
   for (const part of parts) {
     if (part.startsWith('<cards>')) {
       const json = part.slice('<cards>'.length, -'</cards>'.length).trim();
       try {
-        afterBubble.push(renderCards(JSON.parse(json)));
+        const items = JSON.parse(json);
+        totalProducts += items.filter(i => i.type === 'product').length;
+        afterBubble.push(renderCards(items, searchQuery, usedTool));
       } catch {
         const pre = document.createElement('pre');
         pre.style.cssText = 'font-size:11px;color:var(--muted);overflow:auto;';
@@ -382,6 +482,17 @@ function appendAIMsg(text, searchQuery) {
         hasBubbleContent = true;
       }
     }
+  }
+
+  row.appendChild(label);
+
+  if (searchQuery) {
+    const m = TOOL_META[usedTool];
+    const badge = document.createElement('div');
+    badge.className = 'tool-badge';
+    const countStr = totalProducts > 0 ? ` · ${totalProducts} results` : '';
+    badge.textContent = `${m.icon} ${m.label}${countStr}`;
+    row.appendChild(badge);
   }
 
   if (hasBubbleContent) row.appendChild(bubble);
@@ -420,7 +531,7 @@ function renderBrandChips(brands) {
 }
 
 // ── Render product cards ──────────────────────────────────
-function renderCards(items) {
+function renderCards(items, searchQuery, usedTool) {
   const wrap = document.createElement('div');
   wrap.className = 'cards-outer';
 
@@ -545,6 +656,35 @@ function renderCards(items) {
     wrap.appendChild(dis);
   }
 
+  // Re-run bar — only shown in chat context (searchQuery + usedTool provided)
+  if (searchQuery && usedTool) {
+    const bar = document.createElement('div');
+    bar.className = 'rerun-bar';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'rerun-label';
+    lbl.textContent = 'Try with:';
+    bar.appendChild(lbl);
+
+    for (const tool of Object.keys(TOOL_META)) {
+      if (tool === usedTool) continue;
+      const m = TOOL_META[tool];
+      const btn = document.createElement('button');
+      btn.className = 'rerun-btn';
+      btn.textContent = `${m.icon} ${m.label}`;
+      btn.addEventListener('click', () => {
+        activeTool = tool;
+        updateToolBadge();
+        appendSystemNote(`Switched to ${m.label} — re-running search`);
+        inputEl.value = searchQuery;
+        sendMessage();
+      });
+      bar.appendChild(btn);
+    }
+
+    wrap.appendChild(bar);
+  }
+
   return wrap;
 }
 
@@ -589,37 +729,53 @@ async function showHistoryModal() {
 
     compareSearches.innerHTML = '';
 
+    // Group by query (case-insensitive) preserving newest-first order
+    const groups = new Map();
     for (const s of searches) {
-      const when        = new Date(s.createdAt).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-      const toolMeta    = TOOL_META[s.tool] || TOOL_META.serpapi;
-      const countryMeta = COUNTRY_META[s.country] || COUNTRY_META.in;
+      const key = s.query.toLowerCase().trim();
+      if (!groups.has(key)) groups.set(key, { query: s.query, runs: [] });
+      groups.get(key).runs.push(s);
+    }
 
-      const item = document.createElement('div');
-      item.className = 'search-item';
+    for (const { query, runs } of groups.values()) {
+      const group = document.createElement('div');
+      group.className = 'search-group';
 
-      // Header
-      item.innerHTML = `
-        <div class="search-item-header">
-          <div class="search-query">${esc(s.query)}</div>
-          <div class="search-meta-row">
-            <span>${toolMeta.icon} ${toolMeta.label}</span>
-            <span>${countryMeta.flag} ${countryMeta.label}</span>
-            <span>📊 ${s.resultCount || 0} results</span>
-            <span>🕐 ${when}</span>
-          </div>
-        </div>`;
+      const queryEl = document.createElement('div');
+      queryEl.className = 'search-group-query';
+      queryEl.textContent = query;
+      group.appendChild(queryEl);
 
-      // Cards — parse from aiReply so images/data match exactly what was shown in chat
-      const parsed = extractCardsFromReply(s.aiReply);
-      if (parsed?.length) {
-        item.appendChild(renderCards(parsed));
-      } else if (s.results?.length) {
-        // Fallback: build card-compatible objects from raw DB results
-        const fallback = s.results.map(r => ({ type: 'product', ...r }));
-        item.appendChild(renderCards(fallback));
+      for (const s of runs) {
+        const when        = new Date(s.createdAt).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const toolMeta    = TOOL_META[s.tool] || TOOL_META.serpapi;
+        const countryMeta = COUNTRY_META[s.country] || COUNTRY_META.in;
+
+        const details = document.createElement('details');
+        details.className = 'tool-run';
+        if (runs.length === 1) details.open = true; // auto-open single runs
+
+        const summary = document.createElement('summary');
+        summary.className = 'tool-run-header';
+        summary.innerHTML = `
+          <span class="tool-run-badge">${toolMeta.icon} ${toolMeta.label}</span>
+          <span class="tool-run-meta">${countryMeta.flag} ${countryMeta.label} · ${s.resultCount || 0} results · ${esc(when)}</span>
+          <span class="tool-run-arrow">▸</span>`;
+        details.appendChild(summary);
+
+        // Cards parsed from aiReply → exact match with what chat showed
+        const parsed = extractCardsFromReply(s.aiReply);
+        if (parsed?.length) {
+          details.appendChild(renderCards(parsed));
+        } else if (s.results?.length) {
+          const fallback = s.results.map(r => ({ type: 'product', ...r }));
+          details.appendChild(renderCards(fallback));
+        }
+
+        group.appendChild(details);
       }
 
-      compareSearches.appendChild(item);
+      compareSearches.appendChild(group);
     }
   } catch {
     compareSearches.innerHTML = '<div class="compare-empty"><p>Failed to load history.</p></div>';
